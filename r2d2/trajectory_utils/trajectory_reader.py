@@ -39,7 +39,8 @@ def get_hdf5_length(hdf5_file, keys_to_ignore=[]):
     return length
 
 
-def load_hdf5_to_dict(hdf5_file, index, keys_to_ignore=[]):
+def load_hdf5_to_dict(hdf5_file, index=0, keys_to_ignore=[]):
+    if isinstance(hdf5_file, str): hdf5_file = h5py.File(hdf5_file, 'r')
     data_dict = {}
 
     for key in hdf5_file.keys():

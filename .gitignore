@@ -2,6 +2,7 @@
 data/
 training_logs/
 evaluation_logs/
+*.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

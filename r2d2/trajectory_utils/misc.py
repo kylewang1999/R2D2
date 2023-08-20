@@ -4,7 +4,9 @@ from copy import deepcopy
 
 import cv2
 import numpy as np
+import PIL
 from PIL import Image
+import matplotlib.pyplot as plt
 
 from r2d2.calibration.calibration_utils import *
 from r2d2.camera_utils.info import camera_type_to_string_dict
@@ -15,6 +17,8 @@ from r2d2.misc.transformations import change_pose_frame
 from r2d2.trajectory_utils.trajectory_reader import TrajectoryReader
 from r2d2.trajectory_utils.trajectory_writer import TrajectoryWriter
 
+if not hasattr(PIL.Image, 'Resampling'):  # For Pillow<9.0
+    PIL.Image.Resampling = PIL.Image
 
 def collect_trajectory(
     env,
@@ -392,7 +396,7 @@ def load_trajectory(
     return timestep_list
 
 
-def visualize_timestep(timestep, max_width=1000, max_height=500, aspect_ratio=1.5, pause_time=15):
+def visualize_timestep(timestep, max_width=1000, max_height=500, aspect_ratio=1.5, pause_time=15, overlay_camid=True):
     # Process Image Data #
     obs = timestep["observation"]
     if "image" in obs:
@@ -432,6 +436,9 @@ def visualize_timestep(timestep, max_width=1000, max_height=500, aspect_ratio=1.
     for i in range(len(sorted_image_list)):
         img = Image.fromarray(sorted_image_list[i])
         resized_img = img.resize((img_width, img_height), Image.Resampling.LANCZOS)
+        if overlay_camid:
+            resized_img = cv2.putText(np.array(resized_img), camera_ids[i], org=(10,40), fontFace=cv2.FONT_HERSHEY_SIMPLEX, 
+                        fontScale=1, color=(255,255,255), thickness=2)
         img_grid[i % num_rows].append(np.array(resized_img))
 
     # Combine Images #
@@ -440,8 +447,10 @@ def visualize_timestep(timestep, max_width=1000, max_height=500, aspect_ratio=1.
     img_grid = np.vstack(img_grid)
 
     # Visualize Frame #
-    cv2.imshow("Image Feed", img_grid)
-    cv2.waitKey(pause_time)
+    # cv2.imshow("Image Feed", img_grid)
+    # cv2.waitKey(pause_time)
+
+    plt.imshow(img_grid); plt.show()    # Prevent kernel termination when using cv2.imshow() over ssh server.
 
 
 def visualize_trajectory(
