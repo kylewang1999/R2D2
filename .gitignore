@@ -4,6 +4,7 @@ results/
 training_logs/
 evaluation_logs/
 *.ipynb
+*.yaml
 *settings*
 
 # Byte-compiled / optimized / DLL files
@@ -137,3 +138,4 @@ dmypy.json
 .pyre/
 dev*.py
 *.png
+logs/
