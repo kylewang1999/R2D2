@@ -1,43 +1,45 @@
 exp:
     base_dir: '/home/kyle/Desktop/r2d2'  # Absolute path to your r2d2 repo
-    exp_name: 'debug'
+    exp_name: 'sam_infer_mask_all_joint'
     log_dir: '{base_dir}/logs/{exp_name}_{date_time}'
     device: 'cuda'
-    trained_on_multi_gpus: false
-
-robot:
-    robot_name: 'Panda'
-    n_kp: 7
 
 r2d2:
     data_folder: '/home/kyle/Desktop/data/r2d2_household/pen_in_several/Fri_Apr_21_10_42_22_2023'
+    # data_folder: '/home/kyle/Desktop/data/r2d2_household/pen_in_several/Fri_Apr_21_10_45_08_2023'
     annotated_subfolders: [
         Fri_Apr_21_10_42_22_2023,
     ]
-    scale: 1.0
-    height: 720                 # H, W after scaling
-    normalize: false
-    width: 1280
+    scale: 0.5  # Original: 720 * 1280
+    height: 360                 # H, W after scaling
+    width: 640
+    normalize: true             # Normalize images to [0, 1]
     mean: [0.485, 0.456, 0.406] # Per-channel mean and std
     std: [0.229, 0.224, 0.225]
     camera_ids: ['23404442_left', '23404442_right', '29838012_left','29838012_right']
     camera_id: '23404442_right'
-    batch_size: 1
-    num_workers: 1
-    shuffle: false
+    batch_size: 16
+    num_workers: 16
+    shuffle: true
 
 ctrnet:
     pretrained_keypoint_seg_model_path: '{base_dir}/ctrnet/weights/panda/panda-3cam_azure/net.pth'
+    trained_on_multi_gpus: true
+    stage: 'train'
+    robot_name: 'Panda'
     urdf_file: '{base_dir}/ctrnet/urdfs/Panda/panda.urdf'
-    training_params:
-        lr: 1e-6
-        beta1: 0.9
-        n_epoch: 500
-        out_dir: 'results/debug'
-        ckp_per_epoch: 10
-        reproj_err_scale: 0.01
+    meshobj_dir: '{base_dir}/ctrnet/urdfs/Panda/meshes/visual'
+    checkpoint_path: '{log_dir}/checkpoint.pth'
+    use_gpu: true
+    n_kp: 7
+    lr: 1e-4
+    kp_loss_weight: 1e-3    # Good for trainig on 1 camera only (e.g. 23404442_right)
+    beta1: 0.9
+    n_epoch: 100
+    ckp_per_epoch: 30
+    reproj_err_scale: 0.01
 
-sam:
+sam:    
     checkpoint: '/home/kyle/Desktop/models/sam_segment_anything/sam_vit_h_4b8939.pth'
     model_type: 'vit_h'
     inference_params:

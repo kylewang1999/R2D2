@@ -1,4 +1,4 @@
-import yaml, torchvision.transforms as transforms
+import yaml, os, torchvision.transforms as transforms
 from types import SimpleNamespace
 from datetime import datetime
 
@@ -7,7 +7,7 @@ def dict_to_object(d):
     elif isinstance(d, list): return [dict_to_object(x) for x in d]
     else: return d
 
-def replace_fstring_in_dict(d):
+def replace_fstring_in_dict(d): # Not used much... sadly
     for key, value in d.items():
         if isinstance(value, dict):
             replace_fstring_in_dict(value)
@@ -22,7 +22,7 @@ def merge_dicts(parent_dict, child_dict):
             merged_dict[key] = {**value, **child_dict[key]}
     return merged_dict
 
-def args_from_yaml(fname_base='./base.yaml', fname_aux=None) -> SimpleNamespace:
+def args_from_yaml(fname_base='./base.yaml', fname_aux:str=None) -> SimpleNamespace:
     
     conf = merge_dicts(
         yaml.safe_load(open(fname_base, 'r')), 
@@ -31,12 +31,20 @@ def args_from_yaml(fname_base='./base.yaml', fname_aux=None) -> SimpleNamespace:
 
     conf['exp']['date_time'] = datetime.now().strftime("%m%d-%H:%M")
     args = dict_to_object(conf)
+    args.exp.exp_name = fname_aux.split('/')[-1].split('.')[0] if fname_aux is not None else fname_base.split('/')[-1].split('.')[0]
 
-    # Replace `base_dir`, `exp_name`, `date_time` in config fstrings
-    args.exp.log_dir= args.exp.log_dir.format_map(conf['exp'])
-    args.ctrnet.keypoint_seg_model_path = args.ctrnet.keypoint_seg_model_path.format_map(conf['exp'])
-    args.ctrnet.urdf_file = args.ctrnet.urdf_file.format_map(conf['exp'])
-    
+    # Format map by replacing `base_dir`, `exp_name`, `date_time` in config fstrings
+    args.exp.log_dir= args.exp.log_dir.format_map(vars(args.exp))
+    if args.ctrnet.pretrained_keypoint_seg_model_path is not None:
+        args.ctrnet.pretrained_keypoint_seg_model_path = args.ctrnet.pretrained_keypoint_seg_model_path.format_map(vars(args.exp))
+    args.ctrnet.urdf_file = args.ctrnet.urdf_file.format_map(vars(args.exp))
+    args.ctrnet.meshobj_dir = args.ctrnet.meshobj_dir.format_map(vars(args.exp))
+    args.ctrnet.checkpoint_path = args.ctrnet.checkpoint_path.format_map(vars(args.exp))
+    args.ctrnet.lr = float(args.ctrnet.lr)
+    args.ctrnet.kp_loss_weight = float(args.ctrnet.kp_loss_weight)
+
+    # TODO: use args.ctrnet.kp_loss_weight
+
     # Set transformation for dataloader
     args.r2d2.trans_to_tensor = transforms.Compose([
             transforms.ToTensor(),
