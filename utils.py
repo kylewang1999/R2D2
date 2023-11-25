@@ -1,3 +1,11 @@
+'''
+File Created:  2023-Nov-13th Mon 10:28
+Author:        Kaiyuan Wang (k5wang@ucsd.edu)
+Affiliation:   ARCLab @ UCSD
+Description:   Utilities for training, testing, visualization
+'''
+
+
 import torch, numpy as np, matplotlib.pyplot as plt, io
 from PIL import Image
 from kornia.geometry.liegroup import Se3

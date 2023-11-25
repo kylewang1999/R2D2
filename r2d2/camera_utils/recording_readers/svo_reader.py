@@ -2,10 +2,10 @@ from copy import deepcopy
 
 import cv2
 
-try:
-    import pyzed.sl as sl
-except ModuleNotFoundError:
-    print("WARNING: You have not setup the ZED cameras, and currently cannot use them")
+# try:
+#     import pyzed.sl as sl
+# except ModuleNotFoundError:
+#     print("WARNING: You have not setup the ZED cameras, and currently cannot use them")
 
 resize_func_map = {"cv2": cv2.resize, None: None}
 

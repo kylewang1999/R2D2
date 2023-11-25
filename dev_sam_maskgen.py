@@ -17,7 +17,7 @@ from PIL import Image
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from types import SimpleNamespace
-from datetime import datetime
+from utils import project_3d_2d
 
 from ctrnet.imageloaders.r2d2_data import R2D2DatasetBlock, R2D2DatasetBlockWithSeg, \
     get_camera_intrinsics, get_robot_mesh_files, get_r2d2_dataset, get_kp
@@ -352,18 +352,53 @@ def infer_masks_base_only(predictor:SamPredictor, args, visualize=False):
 
             np.savez_compressed(file=target_fname, masks=np.stack(mask_list))
 
+''' Propmt for segmenting 2 joints '''
+# PROMPT_TABLE = {
+#     '23404442_left':{'bbox': np.array([0,100,400,500]), 'points':np.array([[300,450]]), 'labels':np.array([1])},
+#     '23404442_right':{'bbox':np.array([0,100,300,500]), 'points':np.array([[200,400]]), 'labels':np.array([1])}, 
+#     '29838012_left':{'bbox':np.array([950,300,1280,600]), 'points':np.array([[1000,500], [1150,350]]), 'labels':np.array([1,1])},
+#     '29838012_right':{'bbox':np.array([800,300,1280,600]), 'points':np.array([[900,500],[1000,350]]), 'labels':np.array([1,1])}
+# }
+
+''' Propmt for segmenting 3 joints '''
 PROMPT_TABLE = {
-    '23404442_left':{'bbox': np.array([0,0,400,500]), 'points':np.array([[300,450]]), 'labels':np.array([1])},
-    '23404442_right':{'bbox':np.array([0,0,300,500]), 'points':np.array([[200,400]]), 'labels':np.array([1])}, 
-    '29838012_left':{'bbox':np.array([500,0,1280,600]), 'points':np.array([[1000,500]]), 'labels':np.array([1])},
-    '29838012_right':{'bbox':np.array([400,0,1280,600]), 'points':np.array([[900,500]]), 'labels':np.array([1])}
+    '23404442_left':{'bbox': np.array([0,100,400,500]), 'points':np.array([[300,450],[200,200]]), 'labels':np.array([1,1])},
+    '23404442_right':{'bbox':np.array([0,100,300,500]), 'points':np.array([[200,400],[100,200]]), 'labels':np.array([1,1])}, 
+    '29838012_left':{'bbox':np.array([950,300,1280,600]), 'points':np.array([[1000,500], [1150,350]]), 'labels':np.array([1,1])},
+    '29838012_right':{'bbox':np.array([800,300,1280,600]), 'points':np.array([[900,500],[1000,350]]), 'labels':np.array([1,1])}
 }
 
+''' cTr pose for Fri_Apr_21_10_42_22_2023 estimated by properly trained cTrNet '''
+CTR_POSE_TABLE = {
+    '23404442_left' : np.array([1.8219, -0.2591, 0.1965, -0.4622, 0.1534, 0.7621]), 
+    '23404442_right' : np.array([1.7727, -0.4724, 0.3734, -0.6855, 0.1627, 0.8416]), 
+    '29838012_left' : np.array([0.6690, -2.1279, 1.8204,  0.5540, 0.3119, 0.8275]),
+    '29838012_right' : np.array([0.6671, -2.2482, 1.7823,  0.4002, 0.2975, 0.8104]) 
+}
+
+
 def infer_masks_all_joints(predictor:SamPredictor, args, visualize=False):
+
+    ''' Prepare args '''
+    K = get_camera_intrinsics(args.r2d2.camera_id)
+    args.ctrnet.fx  = K[0,0]*args.r2d2.scale; args.ctrnet.fy = K[1,1]*args.r2d2.scale
+    args.ctrnet.px = K[0,2]*args.r2d2.scale; args.ctrnet.py = K[1,2]*args.r2d2.scale
+    args.ctrnet.K = np.array([
+        [args.ctrnet.fx, 0, args.ctrnet.px], [0, args.ctrnet.fy, args.ctrnet.py], [0,0,1]
+    ])
+    args.ctrnet.width = args.r2d2.width; 
+    args.ctrnet.height = args.r2d2.height
+    args.ctrnet.device = args.exp.device
+    args.ctrnet.log_dir = args.exp.log_dir
+
+    from ctrnet.models.robot_arm import PandaArm
+    model = CtRNet(args.ctrnet)
+    panda_arm = PandaArm(args.ctrnet.urdf_file)
+    robot_renderer = model.setup_robot_renderer(get_robot_mesh_files()[:3])
     
     for i,camera_id in enumerate(args.r2d2.camera_ids):
 
-        target_fname = join(args.r2d2.data_folder, f'{camera_id}_seg_alljoints.npz')
+        target_fname = join(args.r2d2.data_folder, f'{camera_id}_seg_3joints.npz')
         writer = SummaryWriter(join(args.exp.log_dir, 'tensorboard'))
 
         dataset = R2D2DatasetBlock(
@@ -385,20 +420,38 @@ def infer_masks_all_joints(predictor:SamPredictor, args, visualize=False):
             img = img_batch.squeeze().detach().cpu().numpy()
             img = (img.transpose(1,2,0)[...,::-1] * 255).astype(np.uint8)
             predictor.set_image(img)
+            
+            ctr_pose = torch.tensor(CTR_POSE_TABLE[camera_id], dtype=torch.float32, device=args.exp.device)
+            robot_mesh = robot_renderer.get_robot_mesh(joint_angle_batch[0].detach().cpu().numpy())
+            img_rendered = model.render_single_robot_mask(ctr_pose, robot_mesh, robot_renderer) # (1,H,W)
 
+            ''' Generate SAM bbox prompt based on rendered robot mesh (works poorly)'''
+            # rows, cols = torch.where(img_rendered.squeeze() == 1)
+            # bbox = torch.tensor([cols.min(), rows.min(), cols.max(), rows.max()]).detach().cpu().numpy()
+            
+            ''' Use pose initialization from cTrNet and projected 2d joint keypoints (works poorly)'''
+            # from kornia.geometry.liegroup import Se3
+            # from kornia.geometry.quaternion import Quaternion
+            # _, joint_locs_3d = panda_arm.get_joint_RT(joint_angle_batch.squeeze().detach().cpu().numpy())
+            # joint_locs_2d = project_3d_2d(
+            #     torch.tensor(joint_locs_3d, dtype=torch.float32, device=args.exp.device),
+            #     torch.tensor(args.ctrnet.K, dtype=torch.float32, device=args.exp.device), 
+            #     Se3(Quaternion.from_axis_angle(ctr_pose[...,:3]), ctr_pose[...,3:])
+            # )
             # bbox = torch.tensor(np.array([[0,0,400,500], [500,0,800,200]])).to(args.exp.device)
+            # points = joint_locs_2d[None,...]
+            # labels = torch.ones(len(joint_locs_2d), dtype=torch.uint8)[None,...]
             # mask, _, _ = predictor.predict_torch(
-            #     point_coords=None,
-            #     point_labels=None,
-            #     boxes=bbox,
+            #     point_coords=points,
+            #     point_labels=labels,
+            #     # boxes=bbox,
             #     multimask_output=False,
             # )
-            # mask = mask.squeeze().detach().cpu().numpy() # .any(dim=0)
 
+            ''' Use visually inspected points and bbox '''
             points = PROMPT_TABLE[camera_id]['points']
             labels = PROMPT_TABLE[camera_id]['labels']
             bbox = PROMPT_TABLE[camera_id]['bbox']
-
             mask, _, _ = predictor.predict(
                 point_coords=points,
                 point_labels=labels,
@@ -407,6 +460,11 @@ def infer_masks_all_joints(predictor:SamPredictor, args, visualize=False):
             )
             mask = mask.squeeze()
             mask_list.append(mask)
+
+            if isinstance(mask, torch.Tensor): mask = mask.squeeze().detach().cpu().numpy()
+            if isinstance(bbox, torch.Tensor): bbox = bbox.squeeze().detach().cpu().numpy()
+            if isinstance(points, torch.Tensor): points = points.squeeze().detach().cpu().numpy()
+            if isinstance(labels, torch.Tensor): labels = labels.squeeze().detach().cpu().numpy()
             
             if visualize and batch_id % 16 == 0:
                 plt.figure(figsize=(10,10))
@@ -417,6 +475,7 @@ def infer_masks_all_joints(predictor:SamPredictor, args, visualize=False):
                 buffer = io.BytesIO(); plt.savefig(buffer, format='png'); buffer.seek(0); plt.clf(); plt.close()
                 image_arr = np.array(Image.open(buffer).convert('RGB'))
                 writer.add_image("eval_img/masknpose_pred", torch.cat([torch.tensor(image_arr).permute(2,0,1)] ,dim=-1), global_step=i*len(dataloader)+batch_id)    
+                writer.add_image("eval_img/render", torch.cat([img_rendered.repeat(3,1,1)], dim=-1), global_step=i*len(dataloader)+batch_id)
         
         print(f'==== Writing to {target_fname} ====')
         np.savez_compressed(file=target_fname, masks=np.stack(mask_list))
@@ -426,6 +485,14 @@ if __name__ == '__main__':
     # TODO: Infer mask for entire kinematic chain
     base_yaml = './config/base_sam_maskgen.yaml'
     args = args_from_yaml(base_yaml)
+    
+    K = get_camera_intrinsics(args.r2d2.camera_id)
+    args.ctrnet.fx  = K[0,0]*args.r2d2.scale; args.ctrnet.fy = K[1,1]*args.r2d2.scale
+    args.ctrnet.px = K[0,2]*args.r2d2.scale; args.ctrnet.py = K[1,2]*args.r2d2.scale
+    args.ctrnet.K = np.array([
+        [args.ctrnet.fx, 0, args.ctrnet.px], [0, args.ctrnet.fy, args.ctrnet.py], [0,0,1]
+    ])
+            
 
     sam = sam_model_registry[args.sam.model_type](checkpoint=args.sam.checkpoint)
     sam.to(device=args.exp.device)
