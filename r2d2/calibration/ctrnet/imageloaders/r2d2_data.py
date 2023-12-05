@@ -153,7 +153,7 @@ class R2D2DatasetBlock(Dataset):
                     width=img_sample.shape[1], n_kp=self.n_kp
                 )
                 self.kp2d_gt = torch.tensor(self.kp2d_gt[self.camera_id] * self.scale, dtype=torch.float32)
-            except IndexError:
+            except Exception:
                 # print(f"WARNING: No 2D keypoint annotations found for camera [{self.camera_id}].")
                 self.kp2d_gt = None
 

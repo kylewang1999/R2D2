@@ -5,11 +5,12 @@ Affiliation:   ARCLab @ UCSD
 Description:   Utilities for training, testing, visualization
 '''
 import numpy as np, matplotlib.pyplot as plt
-import os, io, sys, random, cv2, h5py, torch
+import os, io, sys, random, cv2, h5py, torch, kornia
 from torch.autograd import Variable
 from PIL import Image, ImageEnhance
 from kornia.geometry.liegroup import Se3
 from kornia.geometry.quaternion import Quaternion
+from kornia.geometry.conversions import axis_angle_to_rotation_matrix, rotation_matrix_to_axis_angle
 import transforms3d.quaternions as quaternions
 from matplotlib.patches import Ellipse
 
@@ -143,7 +144,7 @@ def show_points(points, ax, color='white', marker_size=100, label=None):
 def plot_pose_and_gtkp(cTr, K, kp3d, kp2d_est, kp2d_gt, img, seg, fname=None, title=None):
     '''Plot estimated 2d keypoints to ground truth  
     Inputs:
-        - cTr: torch.Tensor (6,). Angle-axis representation of camera to robot pose
+        - cTr: torch.Tensor (6,). Axis-angle representation of camera to robot pose
         - K: torch.Tensor (3,3). Camera intrinsics
         - kp3d: torch.Tensor (N, 3). 3D points
         - kp2d_gt: torch.Tensor (N, 7). Ground truth and estimated 2D keypoints
@@ -170,6 +171,21 @@ def plot_pose_and_gtkp(cTr, K, kp3d, kp2d_est, kp2d_gt, img, seg, fname=None, ti
     image_arr = np.array(image)
     plt.clf(); plt.close()
     return image_arr
+
+def average_euler_angles(rotations):
+    ''' Compute average of rotations in axis-angle representation 
+    Input:
+        - rotations: Tensor (N,3). N axis-angle rotation representations
+    Returns:
+        - avg_rot: Tensor (3,). Average axis-angle rotation representation
+    '''
+    
+    rotation_matrices = torch.cat([axis_angle_to_rotation_matrix(r[None,...]) for r in rotations], dim=0)
+    r_mat_avg = rotation_matrices.mean(dim=0)
+    axis_angle_avg = rotation_matrix_to_axis_angle(r_mat_avg)
+    return axis_angle_avg
+
+
 
 ###################################
 # Below are written by Jingpei Lu #

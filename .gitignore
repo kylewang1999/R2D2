@@ -140,3 +140,4 @@ dev*.py
 *.png
 logs*/
 logs*
+config/

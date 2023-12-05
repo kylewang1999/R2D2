@@ -15,7 +15,7 @@ from types import SimpleNamespace
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))  # for resolving r2d2.* package in unit testing
 from r2d2.calibration.ctrnet.models.CtRNet import CtRNetBaseOnly
 from r2d2.calibration.ctrnet.imageloaders.r2d2_data import R2D2DatasetBlock
-from r2d2.calibration.ctrnet.utils import to_device, plot_pose_and_gtkp
+from r2d2.calibration.ctrnet.utils import to_device, plot_pose_and_gtkp, average_euler_angles
 
 def dict2object(d):
     if isinstance(d, dict): return SimpleNamespace(**{k: dict2object(v) for k, v in d.items()})
@@ -28,7 +28,7 @@ def yaml2namespace(yaml_file):
     return args_namespace
 
 def prepare_namespace_args(args:SimpleNamespace):
-     
+
     K = test_intrinsics_dict[args.camera_id]
     args.fx  = K[0,0]*args.scale; args.fy = K[1,1]*args.scale
     args.px = K[0,2]*args.scale; args.py = K[1,2]*args.scale
@@ -82,8 +82,6 @@ class BoardlessCalibrator():
         assert cam_id in self._intrinsics_dict.keys(), f'Camera {cam_id} not found in intrinsics dictionary'
 
         robot_renderer = self.model.setup_robot_renderer(self.robot_mesh_files[:3])
-        # writer = SummaryWriter(abspath('./test_boardless_calibration'))
-        # print(f'log_dir: {args.log_dir}')
         
         kp3d = torch.from_numpy(self.keypoints_3d).to(self.model.device, dtype=torch.float32)
         kp3d = kp3d.repeat(dataloader.batch_size, 1, 1)
@@ -94,21 +92,26 @@ class BoardlessCalibrator():
             for batch_id, (img, joint_angle, extrinsic) in enumerate(pbar:=tqdm(dataloader)):
                 img, joint_angle, extrinsic = to_device(img, joint_angle, extrinsic)
                 ctr, kp2d, seg = self.model.inference_batch_images_base_only(img, kp3d)
+
                 ctr_list.append(ctr)
+                ctr_all = torch.cat(ctr_list, dim=0)
+                t_avg = ctr_all[:,:3].mean(dim=0)
+                r_avg = average_euler_angles(ctr_all[:,3:])
+                ctr_avg = torch.cat([t_avg, r_avg])
 
                 pbar.set_postfix({'ctr shape': ctr.shape})
                 if batch_id % 4 == 0:
-                    pose_and_seg_pred = plot_pose_and_gtkp(ctr[0], K, kp3d[0], kp2d[0], None, img[0], seg[0], fname=None, title='Predicted pose')
+                    pose_and_seg_pred = plot_pose_and_gtkp(ctr_avg, K, kp3d[0], kp2d[0], None, img[0], seg[0], fname=None, title='Predicted pose')
                     robot_mesh = robot_renderer.get_robot_mesh(joint_angle[0].detach().cpu().numpy())
-                    img_rendered = self.model.render_single_robot_mask(ctr[0], robot_mesh, robot_renderer)
+                    img_rendered = self.model.render_single_robot_mask(ctr_avg, robot_mesh, robot_renderer)
                     
                     if summary_writer is None: continue
                     summary_writer.add_image("eval_img/masknpose_pred", torch.cat([torch.tensor(pose_and_seg_pred).permute(2,0,1)] ,dim=-1), global_step=batch_id)
                     summary_writer.add_image("eval_img/seg_pred|render", torch.cat([
                         seg[0].repeat(3,1,1),
                         img_rendered.repeat(3,1,1)
-                        # img[0][[2,1,0],:,:]
                     ], dim=-1), global_step=batch_id)
+        return ctr_avg  # [t_vec, r_vec]
 
 
 if __name__ == "__main__":
@@ -148,4 +151,5 @@ if __name__ == "__main__":
     )
 
     calibrator = BoardlessCalibrator(test_intrinsics_dict, args)
-    calibrator.calibrate(args.camera_id, dataloader, summary_writer)
+    ctr = calibrator.calibrate(args.camera_id, dataloader, summary_writer)
+    print(f'Translation: {ctr[:3]}, Rotation: {ctr[3:]}')
