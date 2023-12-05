@@ -2,9 +2,9 @@ import yaml, os, torchvision.transforms as transforms
 from types import SimpleNamespace
 from datetime import datetime
 
-def dict_to_object(d):
-    if isinstance(d, dict): return SimpleNamespace(**{k: dict_to_object(v) for k, v in d.items()})
-    elif isinstance(d, list): return [dict_to_object(x) for x in d]
+def dict2object(d):
+    if isinstance(d, dict): return SimpleNamespace(**{k: dict2object(v) for k, v in d.items()})
+    elif isinstance(d, list): return [dict2object(x) for x in d]
     else: return d
 
 def replace_fstring_in_dict(d): # Not used much... sadly
@@ -29,8 +29,8 @@ def args_from_yaml(fname_base='./base.yaml', fname_aux:str=None) -> SimpleNamesp
         yaml.safe_load(open(fname_aux, 'r'))
     ) if fname_aux is not None else yaml.safe_load(open(fname_base, 'r'))
 
-    conf['exp']['date_time'] = datetime.now().strftime("%m%d-%H:%M")
-    args = dict_to_object(conf)
+    conf['exp']['date_time'] = datetime.now().strftime("%m%d-%H:%M:%S")
+    args = dict2object(conf)
     args.exp.exp_name = fname_aux.split('/')[-1].split('.')[0] if fname_aux is not None else fname_base.split('/')[-1].split('.')[0]
 
     # Format map by replacing `base_dir`, `exp_name`, `date_time` in config fstrings

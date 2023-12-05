@@ -4,7 +4,7 @@ Author:        Kaiyuan Wang (k5wang@ucsd.edu)
 Affiliation:   ARCLab @ UCSD
 Description:   Test Segment Anything Model on R2D2 Dataset
 '''
-import sys, os, io, argparse, cv2, torch, numpy as np
+import sys, os, io, argparse, cv2, torch, yaml, numpy as np
 from os.path import join, expanduser, exists
 import matplotlib.pyplot as plt
 import matplotlib.pyplot as plt
@@ -360,13 +360,13 @@ def infer_masks_base_only(predictor:SamPredictor, args, visualize=False):
 #     '29838012_right':{'bbox':np.array([800,300,1280,600]), 'points':np.array([[900,500],[1000,350]]), 'labels':np.array([1,1])}
 # }
 
-''' Propmt for segmenting 3 joints '''
-PROMPT_TABLE = {
-    '23404442_left':{'bbox': np.array([0,100,400,500]), 'points':np.array([[300,450],[200,200]]), 'labels':np.array([1,1])},
-    '23404442_right':{'bbox':np.array([0,100,300,500]), 'points':np.array([[200,400],[100,200]]), 'labels':np.array([1,1])}, 
-    '29838012_left':{'bbox':np.array([950,300,1280,600]), 'points':np.array([[1000,500], [1150,350]]), 'labels':np.array([1,1])},
-    '29838012_right':{'bbox':np.array([800,300,1280,600]), 'points':np.array([[900,500],[1000,350]]), 'labels':np.array([1,1])}
-}
+# ''' Propmt for segmenting 3 joints '''
+# PROMPT_TABLE = {
+#     '23404442_left':{'bbox': np.array([0,100,400,500]), 'points':np.array([[300,450],[200,200]]), 'labels':np.array([1,1])},
+#     '23404442_right':{'bbox':np.array([0,100,300,500]), 'points':np.array([[200,400],[100,200]]), 'labels':np.array([1,1])}, 
+#     '29838012_left':{'bbox':np.array([950,300,1280,600]), 'points':np.array([[1000,500], [1150,350]]), 'labels':np.array([1,1])},
+#     '29838012_right':{'bbox':np.array([800,300,1280,600]), 'points':np.array([[900,500],[1000,350]]), 'labels':np.array([1,1])}
+# }
 
 ''' cTr pose for Fri_Apr_21_10_42_22_2023 estimated by properly trained cTrNet '''
 CTR_POSE_TABLE = {
@@ -390,95 +390,112 @@ def infer_masks_all_joints(predictor:SamPredictor, args, visualize=False):
     args.ctrnet.height = args.r2d2.height
     args.ctrnet.device = args.exp.device
     args.ctrnet.log_dir = args.exp.log_dir
+    kp_annotation_dict = yaml.safe_load(open(args.r2d2.kp_annotation_yaml, 'r'))
+    writer = SummaryWriter(join(args.exp.log_dir, 'tensorboard'))
 
     from ctrnet.models.robot_arm import PandaArm
     model = CtRNet(args.ctrnet)
     panda_arm = PandaArm(args.ctrnet.urdf_file)
     robot_renderer = model.setup_robot_renderer(get_robot_mesh_files()[:3])
+
+    # infer_masks_base_only(predictor, args)
+    data_base_dir = "/".join(args.r2d2.data_folder.split('/')[:-1])
+    iter_count = 0
+    for data_folder in args.r2d2.annotated_subfolders[::-1]:
+        print(f'==== Infering masks for {data_folder} ====')
+        args.r2d2.data_folder = join(data_base_dir, data_folder)
     
-    for i,camera_id in enumerate(args.r2d2.camera_ids):
+        for camera_id in args.r2d2.camera_ids:
 
-        target_fname = join(args.r2d2.data_folder, f'{camera_id}_seg_3joints.npz')
-        writer = SummaryWriter(join(args.exp.log_dir, 'tensorboard'))
+            annotation_id = f'{args.r2d2.data_folder.split("/")[-1]}-{camera_id.split("_")[0]}-{camera_id.split("_")[1]}'
+            if not annotation_id in kp_annotation_dict['valid_trails']:
+                print(f'{annotation_id} not in valid trails. Skipping...')
+                continue
+            annotation_info = kp_annotation_dict[annotation_id]
 
-        dataset = R2D2DatasetBlock(
-            data_folder =       args.r2d2.data_folder, 
-            camera_id =         camera_id, 
-            trans_to_tensor =   args.r2d2.trans_to_tensor,
-            n_kp =              args.ctrnet.n_kp,
-            scale =             args.r2d2.scale
-        ) 
-        dataloader = DataLoader(dataset, 
-            batch_size =    args.r2d2.batch_size, 
-            num_workers =   args.r2d2.num_workers,
-            shuffle =       args.r2d2.shuffle
-        )
-        
-        mask_list = []
-        for batch_id, (img_batch, joint_angle_batch, extrinsic_batch, kp2d_gt_batch) in enumerate(tqdm(dataloader)): 
-            assert len(img_batch) == 1, f'Only batch size 1 is supported. {len(img_batch)} images in a batch is not supported'
-            img = img_batch.squeeze().detach().cpu().numpy()
-            img = (img.transpose(1,2,0)[...,::-1] * 255).astype(np.uint8)
-            predictor.set_image(img)
-            
-            ctr_pose = torch.tensor(CTR_POSE_TABLE[camera_id], dtype=torch.float32, device=args.exp.device)
-            robot_mesh = robot_renderer.get_robot_mesh(joint_angle_batch[0].detach().cpu().numpy())
-            img_rendered = model.render_single_robot_mask(ctr_pose, robot_mesh, robot_renderer) # (1,H,W)
+            target_fname = join(args.r2d2.data_folder, f'{camera_id}_seg_3joints.npz')
 
-            ''' Generate SAM bbox prompt based on rendered robot mesh (works poorly)'''
-            # rows, cols = torch.where(img_rendered.squeeze() == 1)
-            # bbox = torch.tensor([cols.min(), rows.min(), cols.max(), rows.max()]).detach().cpu().numpy()
-            
-            ''' Use pose initialization from cTrNet and projected 2d joint keypoints (works poorly)'''
-            # from kornia.geometry.liegroup import Se3
-            # from kornia.geometry.quaternion import Quaternion
-            # _, joint_locs_3d = panda_arm.get_joint_RT(joint_angle_batch.squeeze().detach().cpu().numpy())
-            # joint_locs_2d = project_3d_2d(
-            #     torch.tensor(joint_locs_3d, dtype=torch.float32, device=args.exp.device),
-            #     torch.tensor(args.ctrnet.K, dtype=torch.float32, device=args.exp.device), 
-            #     Se3(Quaternion.from_axis_angle(ctr_pose[...,:3]), ctr_pose[...,3:])
-            # )
-            # bbox = torch.tensor(np.array([[0,0,400,500], [500,0,800,200]])).to(args.exp.device)
-            # points = joint_locs_2d[None,...]
-            # labels = torch.ones(len(joint_locs_2d), dtype=torch.uint8)[None,...]
-            # mask, _, _ = predictor.predict_torch(
-            #     point_coords=points,
-            #     point_labels=labels,
-            #     # boxes=bbox,
-            #     multimask_output=False,
-            # )
-
-            ''' Use visually inspected points and bbox '''
-            points = PROMPT_TABLE[camera_id]['points']
-            labels = PROMPT_TABLE[camera_id]['labels']
-            bbox = PROMPT_TABLE[camera_id]['bbox']
-            mask, _, _ = predictor.predict(
-                point_coords=points,
-                point_labels=labels,
-                box=bbox,
-                multimask_output=False,
+            dataset = R2D2DatasetBlock(
+                data_folder =       args.r2d2.data_folder, 
+                camera_id =         camera_id, 
+                trans_to_tensor =   args.r2d2.trans_to_tensor,
+                n_kp =              args.ctrnet.n_kp,
+                scale =             args.r2d2.scale,
+                kp2ds_info_dict = annotation_info
+            ) 
+            dataloader = DataLoader(dataset, 
+                batch_size =    args.r2d2.batch_size, 
+                num_workers =   args.r2d2.num_workers,
+                shuffle =       args.r2d2.shuffle
             )
-            mask = mask.squeeze()
-            mask_list.append(mask)
-
-            if isinstance(mask, torch.Tensor): mask = mask.squeeze().detach().cpu().numpy()
-            if isinstance(bbox, torch.Tensor): bbox = bbox.squeeze().detach().cpu().numpy()
-            if isinstance(points, torch.Tensor): points = points.squeeze().detach().cpu().numpy()
-            if isinstance(labels, torch.Tensor): labels = labels.squeeze().detach().cpu().numpy()
             
-            if visualize and batch_id % 16 == 0:
-                plt.figure(figsize=(10,10))
-                plt.imshow(img); plt.grid(True)
-                show_mask(mask, plt.gca(), random_color=False) 
-                show_box(bbox, plt.gca())
-                show_points(points, labels, plt.gca(), marker_size=130)
-                buffer = io.BytesIO(); plt.savefig(buffer, format='png'); buffer.seek(0); plt.clf(); plt.close()
-                image_arr = np.array(Image.open(buffer).convert('RGB'))
-                writer.add_image("eval_img/masknpose_pred", torch.cat([torch.tensor(image_arr).permute(2,0,1)] ,dim=-1), global_step=i*len(dataloader)+batch_id)    
-                writer.add_image("eval_img/render", torch.cat([img_rendered.repeat(3,1,1)], dim=-1), global_step=i*len(dataloader)+batch_id)
-        
-        print(f'==== Writing to {target_fname} ====')
-        np.savez_compressed(file=target_fname, masks=np.stack(mask_list))
+            mask_list = []
+            for batch_id, (img_batch, joint_angle_batch, extrinsic_batch, kp2d_gt_batch) in enumerate(tqdm(dataloader)): 
+                assert len(img_batch) == 1, f'Only batch size 1 is supported. {len(img_batch)} images in a batch is not supported'
+                img = img_batch.squeeze().detach().cpu().numpy()
+                img = (img.transpose(1,2,0)[...,::-1] * 255).astype(np.uint8)
+                predictor.set_image(img)
+                
+                ctr_pose = torch.tensor(CTR_POSE_TABLE[camera_id], dtype=torch.float32, device=args.exp.device)
+                robot_mesh = robot_renderer.get_robot_mesh(joint_angle_batch[0].detach().cpu().numpy())
+                img_rendered = model.render_single_robot_mask(ctr_pose, robot_mesh, robot_renderer) # (1,H,W)
+
+                ''' Generate SAM bbox prompt based on rendered robot mesh (works poorly)'''
+                # rows, cols = torch.where(img_rendered.squeeze() == 1)
+                # bbox = torch.tensor([cols.min(), rows.min(), cols.max(), rows.max()]).detach().cpu().numpy()
+                
+                ''' Use pose initialization from cTrNet and projected 2d joint keypoints (works poorly)'''
+                # from kornia.geometry.liegroup import Se3
+                # from kornia.geometry.quaternion import Quaternion
+                # _, joint_locs_3d = panda_arm.get_joint_RT(joint_angle_batch.squeeze().detach().cpu().numpy())
+                # joint_locs_2d = project_3d_2d(
+                #     torch.tensor(joint_locs_3d, dtype=torch.float32, device=args.exp.device),
+                #     torch.tensor(args.ctrnet.K, dtype=torch.float32, device=args.exp.device), 
+                #     Se3(Quaternion.from_axis_angle(ctr_pose[...,:3]), ctr_pose[...,3:])
+                # )
+                # bbox = torch.tensor(np.array([[0,0,400,500], [500,0,800,200]])).to(args.exp.device)
+                # points = joint_locs_2d[None,...]
+                # labels = torch.ones(len(joint_locs_2d), dtype=torch.uint8)[None,...]
+                # mask, _, _ = predictor.predict_torch(
+                #     point_coords=points,
+                #     point_labels=labels,
+                #     # boxes=bbox,
+                #     multimask_output=False,
+                # )
+
+                ''' Use visually inspected points and bbox '''
+                points = np.array(annotation_info['kp_sam_prompt'])
+                labels = np.ones(len(points), dtype=np.uint8)
+                bbox = np.array(annotation_info['bbox'])
+                mask, _, _ = predictor.predict(
+                    point_coords=points,
+                    point_labels=labels,
+                    box=bbox,
+                    multimask_output=False,
+                )
+                mask = mask.squeeze()
+                mask_list.append(mask)
+
+                if isinstance(mask, torch.Tensor): mask = mask.squeeze().detach().cpu().numpy()
+                if isinstance(bbox, torch.Tensor): bbox = bbox.squeeze().detach().cpu().numpy()
+                if isinstance(points, torch.Tensor): points = points.squeeze().detach().cpu().numpy()
+                if isinstance(labels, torch.Tensor): labels = labels.squeeze().detach().cpu().numpy()
+                
+                if visualize and batch_id % 16 == 0:
+                    plt.figure(figsize=(10,10))
+                    plt.imshow(img); plt.grid(True)
+                    show_mask(mask, plt.gca(), random_color=False) 
+                    show_box(bbox, plt.gca())
+                    plt.title(f'{data_folder}-{camera_id}')
+                    show_points(points, labels, plt.gca(), marker_size=130)
+                    plt.savefig(f'{data_folder}-{camera_id}.png')
+                    buffer = io.BytesIO(); plt.savefig(buffer, format='png'); buffer.seek(0); plt.clf(); plt.close()
+                    image_arr = np.array(Image.open(buffer).convert('RGB'))
+                    writer.add_image("eval_img/masknpose_pred", torch.cat([torch.tensor(image_arr).permute(2,0,1)] ,dim=-1), global_step=iter_count)    
+                    writer.add_image("eval_img/render", torch.cat([img_rendered.repeat(3,1,1)], dim=-1), global_step= iter_count)
+                iter_count += 1
+            print(f'==== Writing to {target_fname} ====')
+            np.savez_compressed(file=target_fname, masks=np.stack(mask_list))
 
 if __name__ == '__main__':
     # TODO: Infer mask for all keypoint-annotated r2d2 subfolders    
@@ -498,6 +515,5 @@ if __name__ == '__main__':
     sam.to(device=args.exp.device)
     predictor = SamPredictor(sam)
 
-    # infer_masks_base_only(predictor, args)
     infer_masks_all_joints(predictor, args, visualize=True)
     

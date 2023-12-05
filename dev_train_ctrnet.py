@@ -1,4 +1,4 @@
-import os, torch, numpy as np
+import os, torch, numpy as np, yaml
 from os.path import exists, join
 from tqdm import tqdm
 
@@ -7,8 +7,8 @@ from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from ctrnet.models.CtRNet import CtRNet, CtRNetBaseOnly
-from ctrnet.imageloaders.r2d2_data import R2D2DatasetBlock, R2D2DatasetBlockWithSeg, \
+from r2d2.calibration.ctrnet.models.CtRNet import CtRNet, CtRNetBaseOnly
+from r2d2.calibration.ctrnet.imageloaders.r2d2_data import R2D2DatasetBlock, R2D2DatasetBlockWithSeg, \
     get_camera_intrinsics, get_robot_mesh_files, get_r2d2_dataset, get_kp
 from config.load import args_from_yaml
 from utils import *
@@ -205,6 +205,7 @@ def eval_model_nogt(args, model, dataloader):
     model.eval()
     robot_renderer = model.setup_robot_renderer(get_robot_mesh_files()[:3])
     writer = SummaryWriter(join(args.log_dir, 'tensorboard'))
+    print(f'log_dir: {args.log_dir}')
     
     kp3d = torch.from_numpy(get_kp(type='3d')).to(model.device, dtype=torch.float32)
     kp3d = kp3d.repeat(dataloader.batch_size, 1, 1)
@@ -231,7 +232,7 @@ def eval_model_nogt(args, model, dataloader):
                 # pose_and_seg_pred = plot_pose_and_gtkp(cTr_gt, K, kp3d[0], kp2d[0], None, img[0], seg[0], fname=None, title='Predicted pose and segmentation')
                 # pose_and_seg_pred = plot_pose_and_gtkp(reverse_extrinsic, K, kp3d[0], kp2d[0], None, img[0], seg[0], fname=None, title='Predicted pose and segmentation')
                 
-                pose_and_seg_pred = plot_pose_and_gtkp(cTr[0], K, kp3d[0], kp2d[0], None, img[0], seg[0], fname=None, title='Predicted pose and segmentation')
+                pose_and_seg_pred = plot_pose_and_gtkp(cTr[0], K, kp3d[0], kp2d[0], None, img[0], seg[0], fname=None, title='Predicted pose')
                 robot_mesh = robot_renderer.get_robot_mesh(joint_angle[0].detach().cpu().numpy())
                 img_rendered = model.render_single_robot_mask(cTr[0], robot_mesh, robot_renderer)
                 writer.add_image("eval_img/masknpose_pred", torch.cat([torch.tensor(pose_and_seg_pred).permute(2,0,1)] ,dim=-1), global_step=batch_id)
@@ -255,8 +256,8 @@ if __name__ == "__main__":
 
     base_yaml = './config/base.yaml'
     # aux_yaml = './config/ctrnet_pretrain-sam-mask-supervised_all4cams_seg3joints.yaml'    # pre-train
-    aux_yaml = './config/ctrnet_train_self-supervised.yaml'  # train (self-supervised)
-    # aux_yaml = './config/ctrnet_eval-unseen.yaml'
+    # aux_yaml = './config/ctrnet_train_self-supervised.yaml'  # train (self-supervised)
+    aux_yaml = './config/ctrnet_eval-unseen.yaml'
 
     args = args_from_yaml(base_yaml, aux_yaml)    # For eval
 
@@ -274,42 +275,64 @@ if __name__ == "__main__":
     args.ctrnet.device = args.exp.device
     args.ctrnet.log_dir = args.exp.log_dir
 
+    # For Pretraining
+    if 'eval' not in aux_yaml:
+        kp_annotation_dict = yaml.safe_load(open(args.r2d2.kp_annotation_yaml, 'r'))
+        valid_datasets = []
+        data_base_dir = "/".join(args.r2d2.data_folder.split('/')[:-1])
+        for valid_trail_id in kp_annotation_dict['valid_trails'][:10]:   # Loading too many trails overloads RAM.
+            print(f'Gathering {valid_trail_id}...')
+            data_folder = join(data_base_dir, valid_trail_id.split('-')[0])
+            cam_id = f'{valid_trail_id.split("-")[1]}_{valid_trail_id.split("-")[2]}'
+            dataset = R2D2DatasetBlockWithSeg(
+                data_folder =       data_folder, 
+                camera_id =         cam_id, 
+                trans_to_tensor =   args.r2d2.trans_to_tensor,
+                n_kp =              args.ctrnet.n_kp,
+                scale =             args.r2d2.scale,
+                kp2ds_info_dict = kp_annotation_dict[valid_trail_id]
+            ) 
+            valid_datasets.append(dataset)
+        dataset = ConcatDataset(valid_datasets)
+        dataloader = DataLoader(dataset, 
+            batch_size =    args.r2d2.batch_size, 
+            num_workers =   args.r2d2.num_workers,
+            shuffle =       args.r2d2.shuffle
+        )
     # 1. Get Model and mesh files
     model = CtRNetBaseOnly(args.ctrnet)
-    
-    # 2. Get Dataset and Dataloader
-    dataset = ConcatDataset([
-        R2D2DatasetBlockWithSeg(
-            data_folder =       args.r2d2.data_folder, 
-            camera_id =         cam_id, 
-            trans_to_tensor =   args.r2d2.trans_to_tensor,
-            n_kp =              args.ctrnet.n_kp,
-            scale =             args.r2d2.scale
-        ) for cam_id in args.r2d2.camera_ids
-    ]) if 'eval' not in aux_yaml else ConcatDataset([
-        R2D2DatasetBlock(
-            data_folder =       args.r2d2.data_folder, 
-            camera_id =         cam_id, 
-            trans_to_tensor =   args.r2d2.trans_to_tensor,
-            n_kp =              args.ctrnet.n_kp,
-            scale =             args.r2d2.scale
-        ) for cam_id in args.r2d2.camera_ids
-    ]) 
-
-    dataloader = DataLoader(dataset, 
-        batch_size =    args.r2d2.batch_size, 
-        num_workers =   args.r2d2.num_workers,
-        shuffle =       args.r2d2.shuffle
-    )
 
     # 3. Train or Eval
     if 'pretrain' in aux_yaml:
+        # model.load_state_dict(torch.load('/home/kyle/Desktop/r2d2/logs/ctrnet_pretrain-sam-mask-supervised_all4cams_seg3joints_1127-14:03/interrupted_112.pth'))    # First 10 valid trajectories, then continue training with the rest trajectories
+        # /home/kyle/Desktop/r2d2/logs/ctrnet_pretrain-sam-mask-supervised_all4cams_seg3joints_1127-18:59/interrupted_39.pth    # Complete
         train_model_pretrain_backbones(args.ctrnet, model, dataloader)
     elif 'train' in aux_yaml:
         model.load_state_dict(torch.load(args.ctrnet.checkpoint_path))
         print(f'Loaded CtRNet checkpoint from {args.ctrnet.checkpoint_path}')
         train_model_self_supervised(args.ctrnet, model, dataloader)
     else:
-        model.load_state_dict(torch.load(args.ctrnet.checkpoint_path))
-        print(f'Loaded CtRNet checkpoint from {args.ctrnet.checkpoint_path}')
-        eval_model_nogt(args.ctrnet, model, dataloader)
+        model_path = '/home/kyle/Desktop/r2d2/logs/ctrnet_pretrain-sam-mask-supervised_all4cams_seg3joints_1127-18:59/interrupted_39.pth'
+        model.load_state_dict(torch.load(model_path))
+        print(f'Loaded CtRNet checkpoint from {model_path}')
+
+        data_base_dir = "/".join(args.r2d2.data_folder.split('/')[:-1])
+        for data_sub_dir in args.r2d2.data_subfolders[::-1]:
+            for cam_id in args.r2d2.camera_ids:
+                print(f'Gathering {data_sub_dir}-{cam_id}...')
+                data_folder = join(data_base_dir, data_sub_dir)
+                dataset = R2D2DatasetBlock(
+                    data_folder =       data_folder, 
+                    camera_id =         cam_id, 
+                    trans_to_tensor =   args.r2d2.trans_to_tensor,
+                    n_kp =              args.ctrnet.n_kp,
+                    scale =             args.r2d2.scale,
+                ) 
+                dataloader = DataLoader(dataset, 
+                    batch_size =    args.r2d2.batch_size, 
+                    num_workers =   args.r2d2.num_workers,
+                    shuffle =       args.r2d2.shuffle
+                )
+                log_dir = f'{args.exp.log_dir}_{data_sub_dir}-{cam_id}'
+                args.ctrnet.log_dir = log_dir
+                eval_model_nogt(args.ctrnet, model, dataloader)

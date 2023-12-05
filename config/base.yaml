@@ -1,14 +1,17 @@
 exp:
-    base_dir: '/home/kyle/Desktop/r2d2'  # Absolute path to your r2d2 repo
+    base_dir: '/home/kyle/Desktop/r2d2/r2d2/calibration'  # Absolute path to your r2d2 repo
     exp_name: 'sam_infer_mask_all_joint'
-    log_dir: '{base_dir}/logs/{exp_name}_{date_time}'
+    log_dir: '/home/kyle/Desktop/r2d2/logs/{exp_name}_{date_time}'
     device: 'cuda'
 
 r2d2:
-    data_folder: '/home/kyle/Desktop/data/r2d2_household/pen_in_several/Fri_Apr_21_10_42_22_2023'
-    # data_folder: '/home/kyle/Desktop/data/r2d2_household/pen_in_several/Fri_Apr_21_10_45_08_2023'
+    # data_folder: '/home/kyle/Desktop/data/r2d2_household/pen_in_several/Fri_Apr_21_10_42_22_2023'
+    data_folder: '/home/kyle/Desktop/data/r2d2_household/pen_in_several/Mon_May__1_14_31_48_2023'
+    kp_annotation_yaml: '/home/kyle/Desktop/data/r2d2_household/pen_in_several/kp2d-dlc-2023-11-20-3d/keypoint_bbox_info_from_dlc.yaml'
     annotated_subfolders: [
-        Fri_Apr_21_10_42_22_2023,
+        Fri_Apr_21_10_42_22_2023, Mon_Apr_17_15_39_00_2023, Thu_Apr_27_13_18_00_2023,
+        Thu_Apr_13_15_10_13_2023, Thu_May_11_13_33_20_2023, Thu_May_11_13_33_20_2023,
+        Mon_May__1_14_31_48_2023,
     ]
     scale: 0.5  # Original: 720 * 1280
     height: 360                 # H, W after scaling
@@ -17,7 +20,7 @@ r2d2:
     mean: [0.485, 0.456, 0.406] # Per-channel mean and std
     std: [0.229, 0.224, 0.225]
     camera_ids: ['23404442_left', '23404442_right', '29838012_left','29838012_right']
-    camera_id: '23404442_right'
+    camera_id: '29838012_left'
     batch_size: 8
     num_workers: 8
     shuffle: true
@@ -35,8 +38,8 @@ ctrnet:
     lr: 1e-4
     kp_loss_weight: 1e-3    # Good for trainig on 1 camera only (e.g. 23404442_right)
     beta1: 0.9
-    n_epoch: 100
-    ckp_per_epoch: 30
+    n_epoch: 30
+    ckp_per_epoch: 10
     reproj_err_scale: 0.01
 
 sam:    
