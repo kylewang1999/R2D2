@@ -139,3 +139,4 @@ dmypy.json
 dev*.py
 *.png
 logs*/
+logs*

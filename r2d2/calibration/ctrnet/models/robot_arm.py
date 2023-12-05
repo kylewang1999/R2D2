@@ -1,5 +1,6 @@
 import numpy as np
 from roboticstoolbox.robot.ERobot import ERobot
+from os.path import abspath
 
 class BaxterLeftArm():
     def __init__(self, urdf_file): 
@@ -86,7 +87,7 @@ class PandaArm():
 
         def __init__(self, urdf_file):
 
-            links, name, urdf_string, urdf_filepath = self.URDF_read(urdf_file)
+            links, name, urdf_string, urdf_filepath = self.URDF_read(abspath(urdf_file))
 
             super().__init__(
                 links,

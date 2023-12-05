@@ -43,8 +43,6 @@ PANDA_MESH_FILES = [BASE_DIR + "/ctrnet/urdfs/Panda/meshes/visual/link0/link0.ob
                 BASE_DIR + "/ctrnet/urdfs/Panda/meshes/visual/link7/link7.obj",
                 BASE_DIR + "/ctrnet/urdfs/Panda/meshes/visual/hand/hand.obj"]
 
-
-# TODO: Generalize kp 2d and 3d to all cameras
 KEYPOINTS_2D = {
     '23404442_left': np.array([[215.06241, 447.73056], [221.11848, 414.4581 ], [251.85588, 367.2945 ],
                 [345.09045, 360.57587], [400.59467, 448.07397], [306.23264, 498.95663], [np.nan, np.nan]], dtype=np.float32),
@@ -156,7 +154,7 @@ class R2D2DatasetBlock(Dataset):
                 )
                 self.kp2d_gt = torch.tensor(self.kp2d_gt[self.camera_id] * self.scale, dtype=torch.float32)
             except IndexError:
-                print(f"WARNING: No 2D keypoint annotations found for camera [{self.camera_id}].")
+                # print(f"WARNING: No 2D keypoint annotations found for camera [{self.camera_id}].")
                 self.kp2d_gt = None
 
     def __len__(self):  return len(self.timestep_list)

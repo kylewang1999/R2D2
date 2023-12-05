@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 import kornia
 import numpy as np
+from os.path import abspath
 
 from .keypoint_seg_resnet import KeyPointSegNet
 from .BPnP import BPnP, BPnP_m3d, batch_project
@@ -30,7 +31,7 @@ class CtRNet(torch.nn.Module):
         
         if args.pretrained_keypoint_seg_model_path is not None:
             print("\nLoading keypoint segmentation model from {}\n".format(args.pretrained_keypoint_seg_model_path))
-            self.keypoint_seg_predictor.load_state_dict(torch.load(args.pretrained_keypoint_seg_model_path))
+            self.load_state_dict(torch.load(abspath(args.pretrained_keypoint_seg_model_path)))
 
         else: print("\nTraining cTrNet from Scratch ... \n")
 

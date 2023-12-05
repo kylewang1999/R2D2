@@ -1,0 +1,33 @@
+# Model configurations
+device: 'cuda'
+pretrained_keypoint_seg_model_path: './r2d2/calibration/ctrnet/weights/r2d2_base_only.pth'
+trained_on_multi_gpus: true
+stage: 'train'
+robot_name: 'Panda'
+urdf_file: './r2d2/calibration/ctrnet/urdfs/Panda/panda.urdf'
+meshobj_dir: './r2d2/calibration/ctrnet/urdfs/Panda/meshes/visual'
+use_gpu: true
+n_kp: 7
+lr: 1e-4
+kp_loss_weight: 1e-3
+beta1: 0.9
+n_epoch: 30
+ckp_per_epoch: 10
+reproj_err_scale: 0.01
+
+# Data Configurations
+scale: 0.5  # Original: 720 * 1280
+height: 360                 # H, W after scaling
+width: 640
+normalize: true             # Normalize images to [0, 1]
+mean: [0.485, 0.456, 0.406] # Per-channel mean and std
+std: [0.229, 0.224, 0.225]
+batch_size: 8
+num_workers: 8
+shuffle: false
+camera_id: '29838012_left'
+camera_ids: ['23404442_left', '23404442_right', '29838012_left','29838012_right']
+data_folder: '/home/kyle/Desktop/data/r2d2_household/pen_in_several/Mon_May__1_14_31_48_2023' # a data dir containing `trajectory.h5` and `./recordings`
+
+# Test/Experiment Configurations
+log_dir: './logs/test_boardless_calibrator'
