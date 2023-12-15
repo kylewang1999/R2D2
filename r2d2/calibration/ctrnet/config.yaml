@@ -16,6 +16,22 @@ ckp_per_epoch: 10
 reproj_err_scale: 0.01
 
 # Data Configurations
+# Expects the following directory structure for `data_folder`:
+# .
+# ├── recordings
+# │   ├── MP4 (Stereo recordings. Raw resolution is (720, 2560), i.e. (H, W * 2)))
+# │   │   ├── 19824535.mp4    # Camera ID 1 (end effector view, not usable for ctrnet pupose)
+# │   │   ├── 23404442.mp4    # Camera ID 2 (3rd person view)
+# │   │   ├── 29838012.mp4    # Camera ID 3 (3rd person view)
+# │   │   ├── 19824535_timestamps.json  # TODO: Remove dependency on these json files.
+# │   │   ├── 23404442_timestamps.json  
+# │   │   └── 29838012_timestamps.json
+# │   └── SVO (Currently not used)
+# └── trajectory.h5
+#
+# Sample file folders can be downloaded from:
+# 1. https://drive.google.com/drive/folders/1szxSQia-EWlIobgwNnyS_7om8RV4esV1?usp=sharing
+# 2. https://drive.google.com/drive/folders/1lop7yy1m9QKQQ6xa3Q5fAofGzf57X9pn?usp=sharing
 scale: 0.5  # Original: 720 * 1280
 height: 360                 # H, W after scaling
 width: 640
@@ -25,8 +41,9 @@ std: [0.229, 0.224, 0.225]
 batch_size: 8
 num_workers: 8
 shuffle: false
-camera_id: '29838012_left'
-camera_ids: ['23404442_left', '23404442_right', '29838012_left','29838012_right']
+# Usable camera IDs are in the format of `camera_id + '_left'` or `camera_id + '_right'`
+camera_id: '29838012_left'  # The one camera_id to use for training / inference
+camera_ids: ['23404442_left', '23404442_right', '29838012_left','29838012_right'] # List of usable camera IDs
 data_folder: '/home/kyle/Desktop/data/r2d2_household/pen_in_several/Mon_May__1_14_31_48_2023' # a data dir containing `trajectory.h5` and `./recordings`
 
 # Test/Experiment Configurations
