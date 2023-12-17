@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import kornia
 import numpy as np
-from os.path import abspath
+from os.path import abspath, expanduser
 
 from .keypoint_seg_resnet import KeyPointSegNet
 from .BPnP import BPnP, BPnP_m3d, batch_project
@@ -31,7 +31,7 @@ class CtRNet(torch.nn.Module):
         
         if args.pretrained_keypoint_seg_model_path is not None:
             print("\nLoading keypoint segmentation model from {}\n".format(args.pretrained_keypoint_seg_model_path))
-            self.load_state_dict(torch.load(abspath(args.pretrained_keypoint_seg_model_path)))
+            self.load_state_dict(torch.load(expanduser(args.pretrained_keypoint_seg_model_path)))
 
         else: print("\nTraining cTrNet from Scratch ... \n")
 
@@ -54,10 +54,10 @@ class CtRNet(torch.nn.Module):
         # set up robot model
         if args.robot_name == "Panda":
             from .robot_arm import PandaArm
-            self.robot = PandaArm(args.urdf_file)
+            self.robot = PandaArm(expanduser(args.urdf_file))
         elif args.robot_name == "Baxter_left_arm":
             from .robot_arm import BaxterLeftArm
-            self.robot = BaxterLeftArm(args.urdf_file)
+            self.robot = BaxterLeftArm(expanduser(args.urdf_file))
         print("Robot model: {}".format(args.robot_name))
 
 

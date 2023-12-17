@@ -1,0 +1,1 @@
+r2d2/calibration/ctrnet/weights/ctrnet_r2d2_baseonly.pth filter=lfs diff=lfs merge=lfs -text

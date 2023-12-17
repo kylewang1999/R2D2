@@ -6,7 +6,7 @@ Description:   Off-line boardless calibration utils.
 '''
 import os, sys, yaml, torch, numpy as np
 import torchvision.transforms as transforms
-from os.path import abspath, join
+from os.path import abspath, join, expanduser
 from torch.utils.data import DataLoader, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -60,7 +60,7 @@ class BoardlessCalibrator():
             'link0/link0.obj', 'link1/link1.obj', 'link2/link2.obj',
             'link3/link3.obj', 'link4/link4.obj', 'link5/link5.obj',
             'link6/link6.obj', 'link7/link7.obj', 'hand/hand.obj']
-        self.robot_mesh_files = [abspath(join(ctrnet_args.meshobj_dir, f)) for f in self.robot_mesh_files]
+        self.robot_mesh_files = [join(expanduser(ctrnet_args.meshobj_dir), f) for f in self.robot_mesh_files]
         
         # Pre-defined 3D keypoint locations for PnP solver
         self.keypoints_3d = np.array([
@@ -133,7 +133,7 @@ if __name__ == "__main__":
         '19824535_right': np.array([[697.90771484, 0. , 649.59765625], [0., 697.90771484, 354.90002441],[0.,0.,1.]])
     }
 
-    args = yaml2namespace(abspath('./r2d2/calibration/ctrnet/config.yaml'))
+    args = yaml2namespace(join(os.getcwd(), 'ctrnet/config.yaml')) # ('./r2d2/calibration/ctrnet/config.yaml')
     args = prepare_namespace_args(args)
     summary_writer = SummaryWriter(abspath(args.log_dir))
     print(f'Summary writer log dir: {summary_writer.log_dir}')
