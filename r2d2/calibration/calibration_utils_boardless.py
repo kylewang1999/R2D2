@@ -133,7 +133,8 @@ if __name__ == "__main__":
         '19824535_right': np.array([[697.90771484, 0. , 649.59765625], [0., 697.90771484, 354.90002441],[0.,0.,1.]])
     }
 
-    args = yaml2namespace(join(os.getcwd(), 'ctrnet/config.yaml')) # ('./r2d2/calibration/ctrnet/config.yaml')
+    args = yaml2namespace(join(os.getcwd(), 'ctrnet/config.yaml')) # If running this file via `python calibration_utils_boardless.py`
+    # args = yaml2namespace(join(os.getcwd(), './r2d2/calibration/ctrnet/config.yaml')) # If running this file via VSCode debugger
     args = prepare_namespace_args(args)
     summary_writer = SummaryWriter(abspath(args.log_dir))
     print(f'Summary writer log dir: {summary_writer.log_dir}')

@@ -5,14 +5,17 @@ Affiliation:   ARCLab @ UCSD
 Description:   Utilities for training, testing, visualization
 '''
 import numpy as np, matplotlib.pyplot as plt
-import os, io, sys, random, cv2, h5py, torch, kornia
+import os, io, sys, random, cv2, h5py, torch, kornia, warnings
 from torch.autograd import Variable
 from PIL import Image, ImageEnhance
 from kornia.geometry.liegroup import Se3
 from kornia.geometry.quaternion import Quaternion
-from kornia.geometry.conversions import axis_angle_to_rotation_matrix, rotation_matrix_to_axis_angle
-import transforms3d.quaternions as quaternions
-from matplotlib.patches import Ellipse
+from pytorch3d.transforms import \
+    euler_angles_to_matrix, matrix_to_quaternion, \
+    quaternion_to_matrix, matrix_to_euler_angles
+# from kornia.geometry.conversions import \
+#     axis_angle_to_rotation_matrix, rotation_matrix_to_axis_angle, \
+#     axis_angle_to_quaternion, quaternion_to_axis_angle
 
 class AverageMeter:
     def __init__(self): self.n, self.avg = 0, 0.0
@@ -172,6 +175,32 @@ def plot_pose_and_gtkp(cTr, K, kp3d, kp2d_est, kp2d_gt, img, seg, fname=None, ti
     plt.clf(); plt.close()
     return image_arr
 
+def average_quaternions(q_raw):
+    ''' Average a list of quaternions
+    Input:
+        q_raw: Tensor of shape (N,4). List of quaternions to be averaged
+    Output:
+        q_avg: Tverage quaternion, of shape (4,)    
+    
+    Ref:
+        - https://github.com/christophhagen/averaging-quaternions.git
+        - https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/20070017872.pdf
+        - http://jp.mathworks.com/matlabcentral/fileexchange/40098-tolgabirdal-averaging-quaternions
+        - http://number-none.com/product/Understanding%20Slerp,%20Then%20Not%20Using%20It/
+    '''
+
+    # Number of quaternions to average
+    A = torch.zeros((4,4), dtype=q_raw.dtype, device=q_raw.device)
+
+    for q in q_raw: A += torch.outer(q,q)
+
+    A = (1.0/len(q_raw))*A
+    U,S,Vh = torch.linalg.svd(A)
+    indices = torch.argsort(S, descending=True)
+    evals, evecs = S[indices], U[:,indices]
+
+    return evecs[:,0]
+
 def average_euler_angles(rotations):
     ''' Compute average of rotations in axis-angle representation 
     Input:
@@ -180,11 +209,24 @@ def average_euler_angles(rotations):
         - avg_rot: Tensor (3,). Average axis-angle rotation representation
     '''
     
-    rotation_matrices = torch.cat([axis_angle_to_rotation_matrix(r[None,...]) for r in rotations], dim=0)
-    r_mat_avg = rotation_matrices.mean(dim=0)
-    axis_angle_avg = rotation_matrix_to_axis_angle(r_mat_avg)
-    return axis_angle_avg
+    ''' A deprecated implementation using kornia (mathematically incorrect)'''
+    # rotation_matrices = torch.cat([axis_angle_to_rotation_matrix(r[None,...]) for r in rotations], dim=0)
+    # r_mat_avg = rotation_matrices.mean(dim=0)
+    # axis_angle_avg = rotation_matrix_to_axis_angle(r_mat_avg)
+    
+    ''' Another deprecated implementation using kornia (mathematically correct, 
+    but can cause trouble due to kornia-CUDA incompatibility)'''
+    # quaternions = torch.cat([axis_angle_to_quaternion(r[None,...]) for r in rotations], dim=0)
+    # q_avg = average_quaternions(quaternions)
+    # axis_angle_avg = quaternion_to_axis_angle(q_avg)
 
+    R = euler_angles_to_matrix(rotations, convention='XYZ')
+    quaternions = matrix_to_quaternion(R)
+    q_avg = average_quaternions(quaternions)
+    R = quaternion_to_matrix(q_avg[None,...])
+    axis_angle_avg = matrix_to_euler_angles(R, convention='XYZ').squeeze()
+
+    return axis_angle_avg
 
 
 ###################################
