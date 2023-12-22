@@ -43,15 +43,6 @@ PANDA_MESH_FILES = [BASE_DIR + "/ctrnet/urdfs/Panda/meshes/visual/link0/link0.ob
                 BASE_DIR + "/ctrnet/urdfs/Panda/meshes/visual/link7/link7.obj",
                 BASE_DIR + "/ctrnet/urdfs/Panda/meshes/visual/hand/hand.obj"]
 
-KEYPOINTS_2D = {
-    '23404442_left': np.array([[215.06241, 447.73056], [221.11848, 414.4581 ], [251.85588, 367.2945 ],
-                [345.09045, 360.57587], [400.59467, 448.07397], [306.23264, 498.95663], [np.nan, np.nan]], dtype=np.float32),
-    '23404442_right': None,
-    "29838012_left": np.array([[1097.1947, 569.90356], [1096.2913, 539.73474], [1072.9938, 480.52173],
-                [976.2365, 452.03995], [921.3841, 526.7741], [np.nan, np.nan], [1005.298, 583.37695]], dtype=np.float32),
-    '29838012_right': None
-}
-
 KEYPOINTS_3D = np.array([[-1.43076244e-01, -2.14468290e-03,  8.92312189e-03],   # In Robot frame
                         [-1.25680570e-01,  6.31571448e-04,  5.56254291e-02],
                         [-5.49979992e-02, -8.49999997e-05,  1.40000001e-01],
@@ -59,11 +50,6 @@ KEYPOINTS_3D = np.array([[-1.43076244e-01, -2.14468290e-03,  8.92312189e-03],   
                         [ 7.15439990e-02,  3.29000002e-04,  1.34900003e-03],
                         [-1.09613143e-02, -8.00555708e-02,  3.85714277e-03],
                         [-1.10056000e-02,  8.00555708e-02,  3.85714277e-03]], dtype=np.float32)
-
-def get_kp(camera_id=None, type='2d'): 
-    assert type in ['2d', '3d'], f"Keypoint type [{type}] not recognized. Please choose from ['2d', '3d']"
-    if camera_id is None or type == '3d': return KEYPOINTS_3D
-    else: return KEYPOINTS_2D[camera_id]
 
 def get_kp2ds(kp2d_label_dirs, width=1280, n_kp=7, fname_csv='CollectedData_kp2d.csv'):
     ''' Read .csv file and extract 2D keypoints annotation result 
@@ -159,7 +145,7 @@ class R2D2DatasetBlock(Dataset):
                 )
                 self.kp2d_gt = torch.tensor(self.kp2d_gt[self.camera_id] * self.scale, dtype=torch.float32)
             except Exception:
-                # print(f"WARNING: No 2D keypoint annotations found for camera [{self.camera_id}].")
+                print(f"No 2D keypoint annotations found for camera [{self.camera_id}].")
                 self.kp2d_gt = None
 
     def __len__(self):  return len(self.timestep_list)
