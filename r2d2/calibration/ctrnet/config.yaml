@@ -32,7 +32,7 @@ reproj_err_scale: 0.01
 # Sample file folders can be downloaded from:
 # 1. https://drive.google.com/drive/folders/1szxSQia-EWlIobgwNnyS_7om8RV4esV1?usp=sharing
 # 2. https://drive.google.com/drive/folders/1lop7yy1m9QKQQ6xa3Q5fAofGzf57X9pn?usp=sharing
-scale: 0.5  # Original: 720 * 1280
+scale: 0.5                  # Original: 720 * 1280
 height: 360                 # H, W after scaling
 width: 640
 normalize: true             # Normalize images to [0, 1]
@@ -41,6 +41,7 @@ std: [0.229, 0.224, 0.225]
 batch_size: 8
 num_workers: 8
 shuffle: false
+num_samples_per_trajecory: 16 # Number of samples to take from each trajectory for calibration
 # Usable camera IDs are in the format of `camera_id + '_left'` or `camera_id + '_right'`
 camera_id: '29838012_left'  # The one camera_id to use for training / inference
 camera_ids: ['23404442_left', '23404442_right', '29838012_left','29838012_right'] # List of usable camera IDs

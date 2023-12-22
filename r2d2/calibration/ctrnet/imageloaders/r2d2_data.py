@@ -105,8 +105,13 @@ def show_points(coords, labels, ax, marker_size=375):
 
 class R2D2DatasetBlock(Dataset):
 
-    def __init__(self, data_folder='~/Desktop/data/r2d2_household/pen_out_several/Fri_Apr_21_10_35_02_2023',
-        camera_id='23404442_left', scale=1., trans_to_tensor=None, n_kp=7, kp2ds_info_dict:dict=None
+    def __init__(self, 
+        data_folder='~/Desktop/data/r2d2_household/pen_out_several/Fri_Apr_21_10_35_02_2023',
+        camera_id='23404442_left', 
+        scale=1., 
+        trans_to_tensor=None, 
+        n_kp=7, 
+        kp2ds_info_dict:dict=None
     ):
         ''' A block of R2D2 dataset. Concat all R2D2DatasetBlocks to construct full R2D2 dataset.
         This class can be used as a stand-alone dataset by itself.

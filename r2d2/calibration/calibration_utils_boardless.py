@@ -7,7 +7,7 @@ Description:   Off-line boardless calibration utils.
 import os, sys, yaml, torch, numpy as np
 import torchvision.transforms as transforms
 from os.path import abspath, join, expanduser
-from torch.utils.data import DataLoader, ConcatDataset
+from torch.utils.data import DataLoader, Subset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from types import SimpleNamespace
@@ -133,8 +133,11 @@ if __name__ == "__main__":
         '19824535_right': np.array([[697.90771484, 0. , 649.59765625], [0., 697.90771484, 354.90002441],[0.,0.,1.]])
     }
 
-    args = yaml2namespace(join(os.getcwd(), 'ctrnet/config.yaml')) # If running this file via `python calibration_utils_boardless.py`
-    # args = yaml2namespace(join(os.getcwd(), './r2d2/calibration/ctrnet/config.yaml')) # If running this file via VSCode debugger
+    try: # If running this file via `python calibration_utils_boardless.py`
+        args = yaml2namespace(join(os.getcwd(), './ctrnet/config.yaml')) 
+    except FileNotFoundError: # If running this file via VSCode debugger
+        args = yaml2namespace(join(os.getcwd(), './r2d2/calibration/ctrnet/config.yaml')) 
+    
     args = prepare_namespace_args(args)
     summary_writer = SummaryWriter(abspath(args.log_dir))
     print(f'Summary writer log dir: {summary_writer.log_dir}')
@@ -145,7 +148,9 @@ if __name__ == "__main__":
         trans_to_tensor =   args.trans_to_tensor,
         n_kp =              args.n_kp,
         scale =             args.scale) 
-    dataloader = DataLoader(dataset, 
+    indices = np.arange(len(dataset))[::len(dataset)//args.num_samples_per_trajecory+1]
+    subset = Subset(dataset, indices)
+    dataloader = DataLoader(subset, 
         batch_size =    args.batch_size, 
         num_workers =   args.num_workers,
         shuffle =       args.shuffle

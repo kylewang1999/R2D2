@@ -5,7 +5,7 @@ Affiliation:   ARCLab @ UCSD
 Description:   Utilities for training, testing, visualization
 '''
 import numpy as np, matplotlib.pyplot as plt
-import os, io, sys, random, cv2, h5py, torch, kornia, warnings
+import os, io, sys, random, cv2, h5py, torch
 from torch.autograd import Variable
 from PIL import Image, ImageEnhance
 from kornia.geometry.liegroup import Se3
